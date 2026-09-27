@@ -1,0 +1,164 @@
+@import "tailwindcss";
+
+@theme {
+  --color-slate-750: #243044;
+  --color-slate-850: #172033;
+}
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  :root {
+    --font-display: 'Fredoka', cursive, system-ui, sans-serif;
+    --font-body: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  }
+  
+  body {
+    font-family: var(--font-body);
+    background-color: #f8fafc;
+    color: #1e293b;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+    transition: background-color 0.2s ease, color 0.2s ease;
+  }
+}
+
+.dark body {
+  background-color: #0b0f19;
+  color: #f8fafc;
+}
+
+.font-display {
+  font-family: var(--font-display);
+}
+
+.font-body {
+  font-family: var(--font-body);
+}
+
+/* 3D Card Flip Transforms */
+.perspective-1000 {
+  perspective: 1000px;
+}
+
+.transform-style-3d {
+  transform-style: preserve-3d;
+}
+
+.backface-hidden {
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.rotate-y-180 {
+  transform: rotateY(180deg);
+}
+
+/* Tactile Sticker Die-Cut and Gloss Styling */
+.sticker-badge {
+  filter: drop-shadow(0 6px 12px rgba(99, 102, 241, 0.22)) drop-shadow(0 2px 4px rgba(0, 0, 0, 0.08));
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.2s ease;
+}
+
+.sticker-badge:hover {
+  filter: drop-shadow(0 10px 18px rgba(99, 102, 241, 0.32)) drop-shadow(0 4px 6px rgba(0, 0, 0, 0.1));
+  transform: translateY(-2px) scale(1.04);
+}
+
+/* Tactile Die-Cut Vinyl Stickers (White Contour Border commented out per preference) */
+.die-cut-sticker {
+  /*
+   * NOTE: The 8 multi-directional #ffffff drop-shadow filters below generate the solid 2px
+   * white die-cut contour/vinyl outline around sticker silhouettes and emojis.
+   * They are commented out to remove the white border while keeping subtle elevation depth.
+   */
+  filter: 
+    /* drop-shadow(2px 0 0 #ffffff) */
+    /* drop-shadow(-2px 0 0 #ffffff) */
+    /* drop-shadow(0 2px 0 #ffffff) */
+    /* drop-shadow(0 -2px 0 #ffffff) */
+    /* drop-shadow(1.5px 1.5px 0 #ffffff) */
+    /* drop-shadow(-1.5px 1.5px 0 #ffffff) */
+    /* drop-shadow(1.5px -1.5px 0 #ffffff) */
+    /* drop-shadow(-1.5px -1.5px 0 #ffffff) */
+    drop-shadow(0 3px 6px rgba(0, 0, 0, 0.28));
+  transition: filter 0.2s ease, transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.die-cut-sticker:hover {
+  /*
+   * NOTE: Hover state white die-cut contour.
+   * Commented out to remove the white border while preserving the elevated hover shadow.
+   */
+  filter: 
+    /* drop-shadow(2px 0 0 #ffffff) */
+    /* drop-shadow(-2px 0 0 #ffffff) */
+    /* drop-shadow(0 2px 0 #ffffff) */
+    /* drop-shadow(0 -2px 0 #ffffff) */
+    /* drop-shadow(1.5px 1.5px 0 #ffffff) */
+    /* drop-shadow(-1.5px 1.5px 0 #ffffff) */
+    /* drop-shadow(1.5px -1.5px 0 #ffffff) */
+    /* drop-shadow(-1.5px -1.5px 0 #ffffff) */
+    drop-shadow(0 6px 14px rgba(0, 0, 0, 0.35));
+}
+
+/* Selected state: highlighted blue contour aura and elevated lift until dropped */
+.die-cut-sticker-selected {
+  /*
+   * NOTE: Selected state white die-cut contour.
+   * Commented out to remove the white border while retaining the glowing blue selection aura and drop shadow.
+   */
+  filter: 
+    /* drop-shadow(2px 0 0 #ffffff) */
+    /* drop-shadow(-2px 0 0 #ffffff) */
+    /* drop-shadow(0 2px 0 #ffffff) */
+    /* drop-shadow(0 -2px 0 #ffffff) */
+    /* drop-shadow(1.5px 1.5px 0 #ffffff) */
+    /* drop-shadow(-1.5px 1.5px 0 #ffffff) */
+    /* drop-shadow(1.5px -1.5px 0 #ffffff) */
+    /* drop-shadow(-1.5px -1.5px 0 #ffffff) */
+    drop-shadow(0 0 4px #3b82f6)
+    drop-shadow(0 0 10px #2563eb)
+    drop-shadow(0 0 18px rgba(37, 99, 235, 0.85))
+    drop-shadow(0 0 28px rgba(59, 130, 246, 0.55))
+    drop-shadow(0 10px 20px rgba(0, 0, 0, 0.4));
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+.dark ::-webkit-scrollbar-track {
+  background: #111827;
+}
+.dark ::-webkit-scrollbar-thumb {
+  background: #374151;
+}
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #4b5563;
+}
+
+/* Hide scrollbar for clean UI where needed */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
