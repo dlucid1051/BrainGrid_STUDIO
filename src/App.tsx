@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import { Deck, GridSize, StickerPack, StudyMode, StudySettings, ThemeMode, CanvasScene, PlacedSticker } from './types';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Deck, GridSize, StickerPack, StudyMode, StudySettings, ThemeMode, CanvasScene, PlacedSticker, DEFAULT_SETTINGS } from './types';
 import { STARTER_DECKS } from './data/starterDecks';
 import { INITIAL_STICKER_PACKS, CANVAS_SCENES } from './data/stickerPacks';
 import { storage } from './lib/io';
-import { idbLoadScenes, idbLoadPacks, idbLoadPlacedStickers } from './lib/indexedDBStorage';
+import { idbLoadScenes, idbLoadPacks, idbLoadPlacedStickers, idbClearAll } from './lib/indexedDBStorage';
 import { sounds } from './lib/sound';
 import { usePWAInstall } from './lib/pwa';
 import { Header } from './components/Header';
@@ -33,17 +33,85 @@ export default function App() {
   const [settings, setSettings] = useState<StudySettings>(() => storage.loadSettings());
 
   // Sticker Packs & Custom Canvas Scenes
-  const [customPacks, setCustomPacks] = useState<StickerPack[]>(() => storage.loadCustomPacks());
-  const [customScenes, setCustomScenes] = useState<CanvasScene[]>(() => storage.loadCustomScenes());
+  const [customPacks, setCustomPacks] = useState<StickerPack[]>(() => {
+    const raw = storage.loadCustomPacks();
+    const builtInIds = new Set(INITIAL_STICKER_PACKS.map((p) => p.id));
+    const builtInNames = new Set(INITIAL_STICKER_PACKS.map((p) => p.name.toLowerCase()));
+    return raw.filter(
+      (p) =>
+        p &&
+        p.id &&
+        !builtInIds.has(p.id) &&
+        !builtInNames.has(p.name.toLowerCase()) &&
+        p.id !== 'pack-ocean' &&
+        p.themeSceneId !== 'scene-ocean' &&
+        !p.id.startsWith('custom-pack-pack-ocean') &&
+        !p.id.startsWith('custom-pack-scene-ocean')
+    );
+  });
+
+  const [customScenes, setCustomScenes] = useState<CanvasScene[]>(() => {
+    const raw = storage.loadCustomScenes();
+    const builtInIds = new Set(CANVAS_SCENES.map((s) => s.id));
+    const builtInNames = new Set(CANVAS_SCENES.map((s) => s.name.toLowerCase()));
+    return raw.filter(
+      (s) =>
+        s &&
+        s.id &&
+        !builtInIds.has(s.id) &&
+        s.id !== 'scene-ocean' &&
+        s.packId !== 'pack-ocean' &&
+        s.pattern !== 'ocean' &&
+        !s.id.startsWith('custom-scene-pack-ocean') &&
+        !s.id.startsWith('custom-scene-scene-ocean') &&
+        !(builtInNames.has(s.name.toLowerCase()) && !s.customConfig?.imageUrl)
+    );
+  });
+
   const [placedStickers, setPlacedStickers] = useState<PlacedSticker[]>(() => storage.loadPlacedStickers());
   const [unlockedStickerIds, setUnlockedStickerIds] = useState<string[]>(() =>
     storage.loadUnlockedStickers()
   );
 
-  const packs = [
-    ...INITIAL_STICKER_PACKS.filter((p) => !customPacks.some((c) => c.id === p.id)),
-    ...customPacks,
-  ];
+  // All packs: Built-in packs are primary and permanent; custom packs are appended
+  const packs = useMemo(() => {
+    const builtInIds = new Set(INITIAL_STICKER_PACKS.map((p) => p.id));
+    const builtInNames = new Set(INITIAL_STICKER_PACKS.map((p) => p.name.toLowerCase()));
+    const isCoreSticker = (id?: string) =>
+      id &&
+      (id.startsWith('stk-space-') ||
+        id.startsWith('stk-dino-') ||
+        id.startsWith('stk-math-') ||
+        id.startsWith('stk-ocean-'));
+
+    const validCustom = customPacks
+      .filter(
+        (cp) =>
+          cp &&
+          cp.id &&
+          !builtInIds.has(cp.id) &&
+          !builtInNames.has(cp.name.toLowerCase()) &&
+          cp.id !== 'pack-ocean' &&
+          cp.themeSceneId !== 'scene-ocean' &&
+          !cp.id.startsWith('custom-pack-pack-ocean') &&
+          !cp.id.startsWith('custom-pack-scene-ocean')
+      )
+      .map((cp) => {
+        // Self-heal any legacy custom packs that previously retained built-in sticker IDs
+        const hasCoreIds = cp.stickers.some((s) => isCoreSticker(s.id));
+        if (!hasCoreIds) return cp;
+        return {
+          ...cp,
+          stickers: cp.stickers.map((s, idx) => ({
+            ...s,
+            id: isCoreSticker(s.id) ? `stk-${cp.id}-${idx + 1}` : s.id,
+            packId: cp.id,
+          })),
+        };
+      });
+
+    return [...INITIAL_STICKER_PACKS, ...validCustom];
+  }, [customPacks]);
 
   // New Sticker Reward Notification Toast
   const [recentlyUnlockedSticker, setRecentlyUnlockedSticker] = useState<{
@@ -58,6 +126,7 @@ export default function App() {
   const [isUserGuideOpen, setIsUserGuideOpen] = useState(false);
   const [isTutorGuideOpen, setIsTutorGuideOpen] = useState(false);
   const [autoOpenPackStudio, setAutoOpenPackStudio] = useState(false);
+  const [resetKey, setResetKey] = useState(0);
 
   // PWA Install hook
   const { isInstallable, promptInstall } = usePWAInstall();
@@ -68,10 +137,9 @@ export default function App() {
   }, [settings.soundEnabled]);
 
   // One-time self-healing synchronization on mount:
-  // 1. Bidirectional sync between custom packs & scenes (leveraging IndexedDB and localStorage):
-  //    - Guarantee every custom pack has a canvas backdrop scene
-  //    - Guarantee every custom theme/scene (like Christmas) has a corresponding StickerPack in packs
-  // 2. Preserve all custom backdrop images, unlocked stickers, and placed stickers securely
+  // 1. Pristine separation: Built-in packs/scenes are untouchable.
+  // 2. Purges phantom duplicate packs or scenes from custom storage.
+  // 3. Preserves genuine custom backdrop images, unlocked stickers, and placed stickers.
   useEffect(() => {
     let isCancelled = false;
 
@@ -113,9 +181,12 @@ export default function App() {
         // Purge any built-in scenes or phantom duplicates that leaked into custom storage
         if (
           BUILT_IN_SCENE_IDS.has(sc.id) ||
+          sc.id === 'scene-ocean' ||
           sc.id === 'custom-pack-scene-ocean' ||
           sc.id.startsWith('custom-scene-scene-ocean') ||
           sc.id.startsWith('custom-scene-pack-ocean') ||
+          sc.packId === 'pack-ocean' ||
+          sc.pattern === 'ocean' ||
           (sc.name && BUILT_IN_SCENE_NAMES.has(sc.name.toLowerCase()) && !sc.customConfig?.imageUrl)
         ) {
           continue;
@@ -145,10 +216,13 @@ export default function App() {
         // Purge any built-in packs or phantom duplicate packs
         if (
           BUILT_IN_PACK_IDS.has(p.id) ||
+          p.id === 'pack-ocean' ||
           p.id === 'custom-pack-scene-ocean' ||
           p.id === 'custom-pack-pack-ocean' ||
           p.id.startsWith('custom-pack-scene-ocean') ||
-          (p.name && BUILT_IN_PACK_NAMES.has(p.name.toLowerCase()) && (!p.stickers || p.stickers.length === 0)) ||
+          p.id.startsWith('custom-pack-pack-ocean') ||
+          p.themeSceneId === 'scene-ocean' ||
+          (p.name && BUILT_IN_PACK_NAMES.has(p.name.toLowerCase())) ||
           (p.name && BUILT_IN_SCENE_NAMES.has(p.name.toLowerCase()) && (!p.stickers || p.stickers.length === 0))
         ) {
           continue;
@@ -478,7 +552,7 @@ export default function App() {
     const targetStickerIds = new Set(target.stickers.map((s) => s.id));
     let updatedUnlocked: string[];
     if (newUnlockedState) {
-      updatedUnlocked = Array.from(new Set([...unlockedStickerIds, ...Array.from(targetStickerIds)]));
+      updatedUnlocked = Array.from(new Set<string>([...unlockedStickerIds, ...Array.from(targetStickerIds)]));
     } else {
       updatedUnlocked = unlockedStickerIds.filter((id) => !targetStickerIds.has(id));
     }
@@ -487,25 +561,47 @@ export default function App() {
   };
 
   const handleResetProgress = () => {
-    localStorage.clear();
-    setCustomDecks([]);
-    const defaultStickers = ['stk-space-1', 'stk-dino-1'];
-    setUnlockedStickerIds(defaultStickers);
-    storage.saveUnlockedStickers(defaultStickers);
-    setPlacedStickers([]);
+    // 1. Wipe IndexedDB and memory runtime caches
+    idbClearAll().catch(() => {});
+
+    // 2. Wipe LocalStorage cleanly
+    try {
+      localStorage.clear();
+    } catch {
+      // Storage clear fallback
+    }
+
+    // 3. Persist pristine installation defaults
+    storage.saveSettings(DEFAULT_SETTINGS);
+    storage.saveCanvasSceneId('scene-notebook');
+    storage.saveCustomPacks([]);
+    storage.saveCustomScenes([]);
+    storage.saveCustomDecks([]);
     storage.savePlacedStickers([]);
-    const defaultSettings: StudySettings = {
-      flipTimerDuration: 15,
-      gridSize: '2x3',
-      soundEnabled: true,
-      autoFlip: true,
-      cardOrientation: 'term-first',
-      themeMode: 'system',
-      cardBackgroundStyle: 'illustrated',
-    };
-    setSettings(defaultSettings);
-    storage.saveSettings(defaultSettings);
+    const defaultStickers = ['stk-space-1', 'stk-dino-1'];
+    storage.saveUnlockedStickers(defaultStickers);
+
+    // 4. Return app to first-open installation state and view
+    setSettings(DEFAULT_SETTINGS);
+    setCustomDecks([]);
+    setCustomPacks([]);
+    setCustomScenes([]);
+    setPlacedStickers([]);
+    setUnlockedStickerIds(defaultStickers);
     setSelectedDeckId(STARTER_DECKS[0].id);
+    setCurrentMode('card-flip'); // Return to Card Flip study arena view
+    setRecentlyUnlockedSticker(null);
+
+    // Close any open modals
+    setIsSettingsOpen(false);
+    setIsDeckManagerOpen(false);
+    setIsUserGuideOpen(false);
+    setIsTutorGuideOpen(false);
+    setAutoOpenPackStudio(false);
+
+    // Force remount of study arena to initial state
+    setResetKey((prev) => prev + 1);
+    sounds.playPop();
   };
 
   const activeDeck = allDecks.find((d) => d.id === selectedDeckId) || allDecks[0];
@@ -539,6 +635,7 @@ export default function App() {
       <main className="flex-1 w-full max-w-7xl mx-auto px-4 py-4 sm:py-6 flex flex-col justify-start">
         {currentMode === 'card-flip' && (
           <CardFlipMode
+            key={`card-flip-${selectedDeckId}-${resetKey}`}
             deck={activeDeck}
             settings={settings}
             unlockedStickerIds={unlockedStickerIds}

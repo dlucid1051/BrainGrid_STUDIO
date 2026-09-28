@@ -221,3 +221,24 @@ export async function idbLoadPlacedStickers(): Promise<PlacedSticker[]> {
   }
 }
 
+export async function idbClearAll(): Promise<void> {
+  cachedScenes = null;
+  cachedPacks = null;
+  cachedPlacedStickers = null;
+  try {
+    const db = await openDB();
+    const tx = db.transaction([STORE_SCENES, STORE_PACKS, STORE_PLACED_STICKERS], 'readwrite');
+    tx.objectStore(STORE_SCENES).clear();
+    tx.objectStore(STORE_PACKS).clear();
+    tx.objectStore(STORE_PLACED_STICKERS).clear();
+    await new Promise<void>((resolve, reject) => {
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
+    });
+  } catch (err) {
+    console.warn('IndexedDB clear warning:', err);
+  }
+}
+
+

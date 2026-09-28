@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { 
   CanvasScene, 
   CustomBackgroundConfig, 
@@ -7,7 +7,11 @@ import {
   StickerRarity, 
   VaultPackFile 
 } from '../types';
-import { SVG_BACKGROUND_TEMPLATES } from '../data/svgBackgroundTemplates';
+import { 
+  SVG_BACKGROUND_TEMPLATES, 
+  getCoreThemeBackdrop, 
+  CORE_THEME_BACKDROPS 
+} from '../data/svgBackgroundTemplates';
 import { exportVaultPack, parseVaultPackJSON, storage } from '../lib/io';
 import { optimizeImageDataUrl } from '../lib/imageOptimizer';
 import { sounds } from '../lib/sound';
@@ -58,6 +62,26 @@ interface ThemeAndPackManagerModalProps {
 type ModalTab = 'installed' | 'create' | 'import';
 type PackKind = 'combo' | 'stickers-only' | 'background-only';
 
+const cleanPackIcon = (icon?: string): string => {
+  if (!icon) return '🌟';
+  if (icon === 'Gamepad2' || icon === 'gamepad2') return '🎮';
+  if (icon === 'Wand2' || icon === 'wand2') return '🪄';
+  if (icon === 'Flower2' || icon === 'flower2') return '🌸';
+  if (icon === 'Rocket') return '🚀';
+  if (icon === 'Sparkles') return '✨';
+  if (icon === 'Waves') return '🌊';
+  if (icon === 'Cpu') return '⚡';
+  return icon.replace(/2$/, '');
+};
+
+const cleanPackName = (name: string, isCustom?: boolean): string => {
+  if (!name) return '';
+  if (!isCustom) {
+    return name.replace(/\s*2\b/g, '').trim();
+  }
+  return name;
+};
+
 export const ThemeAndPackManagerModal: React.FC<ThemeAndPackManagerModalProps> = ({
   isOpen,
   onClose,
@@ -74,6 +98,7 @@ export const ThemeAndPackManagerModal: React.FC<ThemeAndPackManagerModalProps> =
 
   // Editing Pack State
   const [editingPackId, setEditingPackId] = useState<string | null>(null);
+  const [validationError, setValidationError] = useState<string | null>(null);
   const [packKind, setPackKind] = useState<PackKind>('combo');
   const [packName, setPackName] = useState('');
   const [packAuthor, setPackAuthor] = useState('');
@@ -121,6 +146,99 @@ export const ThemeAndPackManagerModal: React.FC<ThemeAndPackManagerModalProps> =
   const imageBgFileInputRef = useRef<HTMLInputElement>(null);
   const stickerImageFileInputRef = useRef<HTMLInputElement>(null);
 
+  // Scroll and Highlight tracking for newly added/copied/imported packs
+  const [targetScrollPackId, setTargetScrollPackId] = useState<string | null>(null);
+  const [highlightedPackId, setHighlightedPackId] = useState<string | null>(null);
+  const listContainerRef = useRef<HTMLDivElement>(null);
+
+  // Whenever ThemePack STUDIO modal opens, reset default view to "Installed Packs" tab
+  useEffect(() => {
+    if (isOpen) {
+      setActiveTab('installed');
+      setPackFilter('all');
+      setValidationError(null);
+      setShowHowItWorks(false);
+      setEditingPackId(null);
+      setEditingSceneId(null);
+      setSelectedDraftStickerId(null);
+      setTargetScrollPackId(null);
+      setHighlightedPackId(null);
+    }
+  }, [isOpen]);
+
+  // Scroll the Installed Packs list so the target new/copied/imported pack card is in view
+  useEffect(() => {
+    if (!targetScrollPackId || !isOpen || activeTab !== 'installed') return;
+
+    // Check if the target pack is in packs
+    const packInList = packs.some((p) => p.id === targetScrollPackId);
+    if (!packInList) return;
+
+    // If it's filtered out, switch to 'all' so it is visible in the list
+    if (packFilter === 'built-in') {
+      setPackFilter('all');
+    }
+
+    let cancelled = false;
+    let attempts = 0;
+
+    const tryScroll = () => {
+      if (cancelled) return;
+      const cardEl = document.getElementById(`pack-card-${targetScrollPackId}`);
+      const container = listContainerRef.current;
+
+      if (cardEl && container) {
+        const containerRect = container.getBoundingClientRect();
+        const cardRect = cardEl.getBoundingClientRect();
+        const relativeTop = cardRect.top - containerRect.top + container.scrollTop;
+        const targetTop = relativeTop - container.clientHeight / 2 + cardRect.height / 2;
+
+        container.scrollTo({
+          top: Math.max(0, targetTop),
+          behavior: 'smooth',
+        });
+
+        try {
+          cardEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        } catch {
+          // Fallback if not supported
+        }
+
+        setHighlightedPackId(targetScrollPackId);
+        setTargetScrollPackId(null);
+
+        const highlightTimer = setTimeout(() => {
+          setHighlightedPackId((prev) => (prev === targetScrollPackId ? null : prev));
+        }, 2800);
+
+        return () => clearTimeout(highlightTimer);
+      } else if (attempts < 10) {
+        attempts++;
+        setTimeout(tryScroll, 60);
+      }
+    };
+
+    const timer = setTimeout(tryScroll, 80);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [packs, isOpen, activeTab, targetScrollPackId, packFilter]);
+
+  // Handle ESC key to close modal
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isOpen) {
+        onClose();
+      }
+    };
+    if (isOpen) {
+      window.addEventListener('keydown', handleKeyDown);
+    }
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   // Helpers to start creating a new pack
@@ -151,9 +269,12 @@ export const ThemeAndPackManagerModal: React.FC<ThemeAndPackManagerModalProps> =
   // Helper to edit an existing pack
   const handleStartEditPack = (pack: StickerPack) => {
     sounds.playPop();
+    // Built-in core packs cannot be directly edited; only custom packs can be edited
+    if (!pack.isCustom) return;
+    const newPackId = pack.id;
     setEditingPackId(pack.id);
-    setSelectedDraftStickerId(null);
     setPackName(pack.name || '');
+    setSelectedDraftStickerId(null);
     setPackAuthor(pack.author || 'Creator');
     setPackTheme(pack.theme || '');
     setPackDescription(pack.description || '');
@@ -162,6 +283,7 @@ export const ThemeAndPackManagerModal: React.FC<ThemeAndPackManagerModalProps> =
     // Populate each sticker with its current unlock state
     const loadedStickers: Sticker[] = pack.stickers.map((s) => ({
       ...s,
+      packId: newPackId,
       isUnlocked: typeof s.isUnlocked === 'boolean'
         ? s.isUnlocked
         : (unlockedStickerIds ? unlockedStickerIds.includes(s.id) : (s.rarity === 'Common')),
@@ -169,13 +291,21 @@ export const ThemeAndPackManagerModal: React.FC<ThemeAndPackManagerModalProps> =
     setPackStickers(loadedStickers);
 
     // Find linked scene if combo, and preserve its exact ID
-    const linkedScene = scenes.find(
-      (s) =>
-        s.id === pack.themeSceneId ||
-        s.packId === pack.id ||
-        (pack.name && s.name.toLowerCase() === pack.name.toLowerCase()) ||
-        (pack.theme && s.theme && pack.theme.toLowerCase() === pack.theme.toLowerCase())
-    );
+    const linkedScene =
+      scenes.find(
+        (s) =>
+          s.id === pack.themeSceneId ||
+          s.packId === pack.id ||
+          (pack.name && s.name.toLowerCase() === pack.name.toLowerCase()) ||
+          (pack.theme && s.theme && pack.theme.toLowerCase() === pack.theme.toLowerCase())
+      ) ||
+      storage.loadCustomScenes().find(
+        (s) =>
+          s.id === pack.themeSceneId ||
+          s.packId === pack.id ||
+          (pack.name && s.name.toLowerCase() === pack.name.toLowerCase()) ||
+          (pack.theme && s.theme && pack.theme.toLowerCase() === pack.theme.toLowerCase())
+      );
     setEditingSceneId(linkedScene ? linkedScene.id : (pack.themeSceneId || null));
 
     if (linkedScene && pack.stickers.length > 0) {
@@ -186,16 +316,101 @@ export const ThemeAndPackManagerModal: React.FC<ThemeAndPackManagerModalProps> =
       setPackKind('stickers-only');
     }
 
-    if (linkedScene && linkedScene.customConfig) {
-      setBgType(linkedScene.customConfig.type);
-      setBgImageUrl(linkedScene.customConfig.imageUrl || '');
-      setBgOpacity(linkedScene.customConfig.opacity ?? 100);
-      setBgDimming(linkedScene.customConfig.dimming ?? 20);
-      setBgBlur(linkedScene.customConfig.blur ?? 0);
-      setBgFitMode(linkedScene.customConfig.fitMode || 'cover');
-      setBgGridOverlay(linkedScene.customConfig.gridOverlay || 'none');
-      setBgOverlayColor(linkedScene.customConfig.overlayColor || '#0f172a');
-      setBgSvgMarkup(linkedScene.customConfig.svgMarkup || SVG_BACKGROUND_TEMPLATES[0].svgMarkup);
+    // Resolve companion backdrop info (check customConfig, or fallback to core theme backdrops)
+    const coreBackdrop =
+      getCoreThemeBackdrop(linkedScene?.id) ||
+      getCoreThemeBackdrop(pack.themeSceneId) ||
+      getCoreThemeBackdrop(pack.id) ||
+      getCoreThemeBackdrop(linkedScene?.pattern) ||
+      getCoreThemeBackdrop(linkedScene?.customConfig?.presetTemplate) ||
+      getCoreThemeBackdrop(pack.theme) ||
+      getCoreThemeBackdrop(pack.name) ||
+      getCoreThemeBackdrop(linkedScene?.name) ||
+      getCoreThemeBackdrop(linkedScene?.theme);
+
+    const effectiveConfig: CustomBackgroundConfig | undefined =
+      linkedScene?.customConfig ||
+      (coreBackdrop
+        ? {
+            type: 'svg',
+            presetTemplate: coreBackdrop.templateId,
+            svgMarkup: coreBackdrop.svgMarkup,
+          }
+        : undefined);
+
+    // 1. Detect image content
+    const rawImageUrl =
+      effectiveConfig?.imageUrl ||
+      effectiveConfig?.backgroundImageUrl ||
+      (effectiveConfig as any)?.image ||
+      (effectiveConfig as any)?.url ||
+      (linkedScene as any)?.imageUrl ||
+      '';
+    const hasValidImage = typeof rawImageUrl === 'string' && rawImageUrl.trim().length > 0;
+
+    // 2. Detect SVG markup or preset
+    const rawSvgMarkup =
+      effectiveConfig?.svgMarkup ||
+      (effectiveConfig as any)?.svg ||
+      (linkedScene as any)?.svgMarkup ||
+      '';
+    const hasValidSvg = (typeof rawSvgMarkup === 'string' && rawSvgMarkup.trim().length > 0) || !!effectiveConfig?.presetTemplate || !!coreBackdrop;
+
+    // 3. Resolve backdrop editor default:
+    // If the current backdrop has an image and:
+    //   - effectiveConfig?.type === 'image' OR
+    //   - linkedScene?.pattern === 'custom-image' OR
+    //   - there is an image and no valid custom SVG markup or core backdrop
+    // -> 'image' (Image Wallpaper & Adjuster)
+    // Else if it has an SVG (core backdrop, custom-svg pattern, SVG markup, SVG preset, or vector pattern):
+    // -> 'svg' (SVG Canvas Vector Builder)
+    const isImageBackdrop =
+      (effectiveConfig?.type === 'image' && hasValidImage) ||
+      linkedScene?.pattern === 'custom-image' ||
+      (hasValidImage && !hasValidSvg && !coreBackdrop && effectiveConfig?.type !== 'svg');
+
+    const isSvgBackdrop =
+      effectiveConfig?.type === 'svg' ||
+      linkedScene?.pattern === 'custom-svg' ||
+      !!coreBackdrop ||
+      hasValidSvg ||
+      (linkedScene?.pattern && ['stars', 'dots', 'arcade', 'ocean', 'lines', 'waves'].includes(linkedScene.pattern));
+
+    let resolvedBackdropType: 'image' | 'svg' = 'svg';
+
+    if (isImageBackdrop && !isSvgBackdrop) {
+      resolvedBackdropType = 'image';
+    } else if (isSvgBackdrop) {
+      resolvedBackdropType = 'svg';
+    } else if (hasValidImage) {
+      resolvedBackdropType = 'image';
+    } else {
+      resolvedBackdropType = 'svg';
+    }
+
+    setBgType(resolvedBackdropType);
+
+    if (effectiveConfig || coreBackdrop) {
+      setBgImageUrl(rawImageUrl || '');
+      setBgOpacity(effectiveConfig?.opacity ?? 100);
+      setBgDimming(effectiveConfig?.dimming ?? 20);
+      setBgBlur(effectiveConfig?.blur ?? 0);
+      setBgFitMode(effectiveConfig?.fitMode || 'cover');
+      setBgGridOverlay(effectiveConfig?.gridOverlay || 'none');
+      setBgOverlayColor(effectiveConfig?.overlayColor || '#0f172a');
+      setBgSvgMarkup(
+        rawSvgMarkup ||
+        (coreBackdrop ? coreBackdrop.svgMarkup : SVG_BACKGROUND_TEMPLATES[0].svgMarkup)
+      );
+      if (effectiveConfig?.presetTemplate) {
+        setSelectedTemplateId(effectiveConfig.presetTemplate);
+      } else if (coreBackdrop) {
+        setSelectedTemplateId(coreBackdrop.templateId);
+      }
+    }
+
+    if (coreBackdrop && (!pack.theme || pack.theme.toLowerCase() === 'custom')) {
+      setPackTheme(coreBackdrop.shortLabel);
     }
     setActiveTab('create');
   };
@@ -204,7 +419,31 @@ export const ThemeAndPackManagerModal: React.FC<ThemeAndPackManagerModalProps> =
   const handleDuplicatePack = (pack: StickerPack) => {
     sounds.playPop();
     const newPackId = `custom-pack-${Date.now()}`;
-    const linkedScene = scenes.find((s) => s.id === pack.themeSceneId || s.packId === pack.id);
+    const linkedScene =
+      scenes.find(
+        (s) =>
+          s.id === pack.themeSceneId ||
+          s.packId === pack.id ||
+          (pack.name && s.name.toLowerCase() === pack.name.toLowerCase()) ||
+          (pack.theme && s.theme && pack.theme.toLowerCase() === pack.theme.toLowerCase())
+      ) ||
+      storage.loadCustomScenes().find(
+        (s) =>
+          s.id === pack.themeSceneId ||
+          s.packId === pack.id ||
+          (pack.name && s.name.toLowerCase() === pack.name.toLowerCase()) ||
+          (pack.theme && s.theme && pack.theme.toLowerCase() === pack.theme.toLowerCase())
+      );
+    const coreBackdrop =
+      getCoreThemeBackdrop(linkedScene?.id) ||
+      getCoreThemeBackdrop(pack.themeSceneId) ||
+      getCoreThemeBackdrop(pack.id) ||
+      getCoreThemeBackdrop(linkedScene?.pattern) ||
+      getCoreThemeBackdrop(linkedScene?.customConfig?.presetTemplate) ||
+      getCoreThemeBackdrop(pack.theme) ||
+      getCoreThemeBackdrop(pack.name) ||
+      getCoreThemeBackdrop(linkedScene?.name) ||
+      getCoreThemeBackdrop(linkedScene?.theme);
     
     const clonedStickers: Sticker[] = pack.stickers.map((s, idx) => ({
       ...s,
@@ -216,27 +455,73 @@ export const ThemeAndPackManagerModal: React.FC<ThemeAndPackManagerModalProps> =
     }));
 
     let clonedScene: CanvasScene | undefined = undefined;
-    if (linkedScene) {
+    if (linkedScene || coreBackdrop) {
+      const isImage = !!(
+        linkedScene?.customConfig?.imageUrl?.trim() ||
+        linkedScene?.customConfig?.backgroundImageUrl?.trim() ||
+        linkedScene?.pattern === 'custom-image'
+      );
+
+      const customConfig: CustomBackgroundConfig = linkedScene?.customConfig
+        ? {
+            ...linkedScene.customConfig,
+            type: linkedScene.customConfig.type || (isImage ? 'image' : 'svg'),
+          }
+        : coreBackdrop
+        ? {
+            type: 'svg',
+            presetTemplate: coreBackdrop.templateId,
+            svgMarkup: coreBackdrop.svgMarkup,
+          }
+        : {
+            type: 'svg',
+            svgMarkup: SVG_BACKGROUND_TEMPLATES[0].svgMarkup,
+          };
+
+      const sceneName = coreBackdrop
+        ? `${coreBackdrop.name} (Copy)`
+        : linkedScene
+        ? `${linkedScene.name} (Copy)`
+        : `${pack.name} (Copy) Theme`;
+
+      const themeTag = coreBackdrop
+        ? coreBackdrop.shortLabel
+        : (linkedScene?.theme || pack.theme || 'Custom Theme');
+
       clonedScene = {
-        ...linkedScene,
+        ...(linkedScene || {}),
         id: `scene-custom-${Date.now()}`,
-        name: `${pack.name} (Copy) Theme`,
+        name: sceneName,
+        theme: themeTag,
+        bgGradient: linkedScene?.bgGradient || 'bg-slate-950',
+        pattern: isImage ? 'custom-image' : 'custom-svg',
         isCustom: true,
         packId: newPackId,
+        customConfig,
       };
     }
+
+    const effectiveTheme = coreBackdrop
+      ? coreBackdrop.shortLabel
+      : (pack.theme || 'Custom Theme');
 
     const clonedPack: StickerPack = {
       ...pack,
       id: newPackId,
       name: `${pack.name} (Copy)`,
       author: 'You',
+      theme: effectiveTheme,
       isCustom: true,
       stickers: clonedStickers,
       themeSceneId: clonedScene ? clonedScene.id : undefined,
     };
 
     onSavePack(clonedPack, clonedScene);
+    if (packFilter === 'built-in') {
+      setPackFilter('all');
+    }
+    setActiveTab('installed');
+    setTargetScrollPackId(newPackId);
   };
 
   // Add Sticker to Current Draft (Default rule: Common is unlocked, others are locked)
@@ -327,7 +612,8 @@ export const ThemeAndPackManagerModal: React.FC<ThemeAndPackManagerModalProps> =
 
     // Check size limit (allow up to 8MB since it will be optimized to lightweight crisp JPEG)
     if (file.size > 8 * 1024 * 1024) {
-      alert('Background image is too large. Please select an image under 8MB.');
+      setValidationError('Background image is too large. Please select an image under 8MB.');
+      setTimeout(() => setValidationError(null), 4000);
       return;
     }
 
@@ -353,7 +639,8 @@ export const ThemeAndPackManagerModal: React.FC<ThemeAndPackManagerModalProps> =
     if (!file) return;
 
     if (file.size > 4 * 1024 * 1024) {
-      alert('Sticker image is too large. Please choose an image under 4MB.');
+      setValidationError('Sticker image is too large. Please choose an image under 4MB.');
+      setTimeout(() => setValidationError(null), 4000);
       return;
     }
 
@@ -381,12 +668,14 @@ export const ThemeAndPackManagerModal: React.FC<ThemeAndPackManagerModalProps> =
   const handleSavePackSubmit = async () => {
     const effectivePackName = packName.trim() || packTheme.trim() || 'Custom Pack';
     if (!effectivePackName) {
-      alert('Please enter a pack or theme name.');
+      setValidationError('Please enter a pack or theme name.');
+      setTimeout(() => setValidationError(null), 4000);
       return;
     }
 
     sounds.playFanfare();
-    const packId = editingPackId || `custom-pack-${Date.now()}`;
+    const isEditingBuiltIn = editingPackId ? packs.some((p) => p.id === editingPackId && !p.isCustom) : false;
+    const packId = (editingPackId && !isEditingBuiltIn) ? editingPackId : `custom-pack-${Date.now()}`;
     const linkedScene = scenes.find(
       (s) =>
         (editingSceneId && s.id === editingSceneId) ||
@@ -395,7 +684,10 @@ export const ThemeAndPackManagerModal: React.FC<ThemeAndPackManagerModalProps> =
         (effectivePackName && s.name.toLowerCase() === effectivePackName.toLowerCase()) ||
         (packTheme.trim() && s.theme && s.theme.toLowerCase() === packTheme.trim().toLowerCase())
     );
-    const sceneId = editingSceneId || linkedScene?.id || (editingPackId ? `custom-scene-${editingPackId}` : `custom-scene-${Date.now()}`);
+    const isEditingBuiltInScene = editingSceneId ? scenes.some((s) => s.id === editingSceneId && !s.isCustom) : false;
+    const sceneId = (editingSceneId && !isEditingBuiltInScene)
+      ? editingSceneId
+      : (linkedScene && linkedScene.isCustom ? linkedScene.id : `custom-scene-${packId}`);
 
     let sceneToSave: CanvasScene | undefined = undefined;
 
@@ -471,10 +763,18 @@ export const ThemeAndPackManagerModal: React.FC<ThemeAndPackManagerModalProps> =
       }
     }
 
+    const isCoreStickerId = (id?: string) =>
+      id &&
+      (id.startsWith('stk-space-') ||
+        id.startsWith('stk-dino-') ||
+        id.startsWith('stk-math-') ||
+        id.startsWith('stk-ocean-'));
+
     const stickersToSave: Sticker[] = (packKind === 'background-only')
       ? []
-      : packStickers.map((s) => ({
+      : packStickers.map((s, idx) => ({
           ...s,
+          id: (s.id && !isCoreStickerId(s.id)) ? s.id : `stk-${packId}-${idx + 1}`,
           packId,
           isUnlocked: typeof s.isUnlocked === 'boolean' ? s.isUnlocked : (s.rarity === 'Common'),
         }));
@@ -496,29 +796,65 @@ export const ThemeAndPackManagerModal: React.FC<ThemeAndPackManagerModalProps> =
 
     onSavePack(packToSave, sceneToSave);
     setEditingSceneId(null);
+    if (packFilter === 'built-in') {
+      setPackFilter('all');
+    }
     setActiveTab('installed');
+    setTargetScrollPackId(packId);
   };
 
   // Single Pack Export Handler
   const handleExportSinglePack = async (pack: StickerPack) => {
     sounds.playPop();
-    let companionScene = scenes.find((s) => s.id === pack.themeSceneId || s.packId === pack.id);
-    if (!companionScene) {
-      const themeTitle = pack.theme && pack.theme.toLowerCase() !== 'custom' ? pack.theme : pack.name;
-      companionScene = {
-        id: pack.themeSceneId || `custom-scene-${pack.id}`,
-        name: themeTitle,
-        theme: themeTitle,
-        bgGradient: 'bg-slate-950',
-        pattern: 'custom-svg',
-        isCustom: true,
-        author: pack.author || 'You',
-        customConfig: {
-          type: 'svg',
-          svgMarkup: `<svg viewBox="0 0 1000 500" xmlns="http://www.w3.org/2000/svg"><defs><radialGradient id="amb-${pack.id}" cx="50%" cy="30%" r="70%"><stop offset="0%" stop-color="#1e1b4b" stop-opacity="0.9" /><stop offset="60%" stop-color="#0f172a" stop-opacity="0.95" /><stop offset="100%" stop-color="#020617" stop-opacity="1" /></radialGradient></defs><rect width="1000" height="500" fill="url(#amb-${pack.id})" /><circle cx="820" cy="110" r="45" fill="#fef08a" opacity="0.85" /><circle cx="805" cy="100" r="42" fill="#0f172a" opacity="0.9" /></svg>`,
-        },
-        packId: pack.id,
-      };
+    let companionScene =
+      scenes.find((s) => s.id === pack.themeSceneId || s.packId === pack.id) ||
+      storage.loadCustomScenes().find((s) => s.id === pack.themeSceneId || s.packId === pack.id);
+    const coreBackdrop =
+      getCoreThemeBackdrop(companionScene?.id) ||
+      getCoreThemeBackdrop(pack.themeSceneId) ||
+      getCoreThemeBackdrop(pack.id) ||
+      getCoreThemeBackdrop(companionScene?.pattern) ||
+      getCoreThemeBackdrop(companionScene?.customConfig?.presetTemplate) ||
+      getCoreThemeBackdrop(pack.theme) ||
+      getCoreThemeBackdrop(pack.name) ||
+      getCoreThemeBackdrop(companionScene?.name) ||
+      getCoreThemeBackdrop(companionScene?.theme);
+
+    if (!companionScene || !companionScene.customConfig) {
+      if (coreBackdrop) {
+        companionScene = {
+          ...(companionScene || {}),
+          id: pack.themeSceneId || `scene-custom-${pack.id}`,
+          name: coreBackdrop.name,
+          theme: coreBackdrop.shortLabel,
+          bgGradient: 'bg-slate-950',
+          pattern: 'custom-svg',
+          isCustom: true,
+          author: pack.author || 'BrainGrid',
+          customConfig: {
+            type: 'svg',
+            presetTemplate: coreBackdrop.templateId,
+            svgMarkup: coreBackdrop.svgMarkup,
+          },
+          packId: pack.id,
+        };
+      } else if (!companionScene) {
+        const themeTitle = pack.theme && pack.theme.toLowerCase() !== 'custom' ? pack.theme : pack.name;
+        companionScene = {
+          id: pack.themeSceneId || `custom-scene-${pack.id}`,
+          name: themeTitle,
+          theme: themeTitle,
+          bgGradient: 'bg-slate-950',
+          pattern: 'custom-svg',
+          isCustom: true,
+          author: pack.author || 'You',
+          customConfig: {
+            type: 'svg',
+            svgMarkup: SVG_BACKGROUND_TEMPLATES[0].svgMarkup,
+          },
+          packId: pack.id,
+        };
+      }
     }
     await exportVaultPack(pack, companionScene);
   };
@@ -603,6 +939,13 @@ export const ThemeAndPackManagerModal: React.FC<ThemeAndPackManagerModalProps> =
           ? 'custom-image'
           : (finalConfig?.svgMarkup ? 'custom-svg' : (importPreview.themeScene.pattern || 'custom-image'));
 
+      if (!finalConfig?.imageUrl && (finalConfig?.svgMarkup || finalConfig?.presetTemplate || effectivePattern === 'custom-svg')) {
+        finalConfig = {
+          ...(finalConfig || {}),
+          type: 'svg',
+        };
+      }
+
       sceneToSave = {
         ...importPreview.themeScene,
         id: sceneId,
@@ -653,7 +996,11 @@ export const ThemeAndPackManagerModal: React.FC<ThemeAndPackManagerModalProps> =
 
     onSavePack(packToSave, sceneToSave);
     setImportPreview(null);
+    if (packFilter === 'built-in') {
+      setPackFilter('all');
+    }
     setActiveTab('installed');
+    setTargetScrollPackId(packId);
   };
 
   // Filtered list of packs
@@ -664,7 +1011,14 @@ export const ThemeAndPackManagerModal: React.FC<ThemeAndPackManagerModalProps> =
   });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-950/70 backdrop-blur-sm animate-fade-in overflow-y-auto">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-950/70 backdrop-blur-sm animate-fade-in overflow-y-auto"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
+      }}
+    >
       <div className="relative w-full max-w-4xl bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 flex flex-col max-h-[90vh] overflow-hidden my-auto">
         {/* MODAL HEADER */}
         <div className="flex items-center justify-between px-6 py-3.5 border-b border-slate-100 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/80">
@@ -875,7 +1229,21 @@ export const ThemeAndPackManagerModal: React.FC<ThemeAndPackManagerModalProps> =
         </div>
 
         {/* MODAL BODY CONTAINER */}
-        <div className="flex-1 overflow-y-auto p-6">
+        <div ref={listContainerRef} className="flex-1 overflow-y-auto p-6 scroll-smooth">
+          {/* Validation Alert Banner */}
+          {validationError && (
+            <div className="mb-4 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-300 text-xs font-semibold flex items-center justify-between">
+              <span>{validationError}</span>
+              <button
+                type="button"
+                onClick={() => setValidationError(null)}
+                className="text-xs font-bold hover:underline cursor-pointer ml-3 shrink-0"
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
+
           {/* TAB 1: INSTALLED PACKS LIST */}
           {activeTab === 'installed' && (
             <div className="space-y-4">
@@ -897,21 +1265,27 @@ export const ThemeAndPackManagerModal: React.FC<ThemeAndPackManagerModalProps> =
                   const linkedScene = scenes.find((s) => s.id === pack.themeSceneId || s.packId === pack.id);
                   const isCombo = !!linkedScene && pack.stickers.length > 0;
                   const isBackgroundOnly = !!linkedScene && pack.stickers.length === 0;
+                  const isHighlighted = highlightedPackId === pack.id;
 
                   return (
                     <div
                       key={pack.id}
-                      className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40 flex flex-col justify-between transition-all hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-xs"
+                      id={`pack-card-${pack.id}`}
+                      className={`p-4 rounded-2xl border flex flex-col justify-between transition-all duration-500 ${
+                        isHighlighted
+                          ? 'border-indigo-500 dark:border-indigo-400 ring-2 ring-indigo-500/80 dark:ring-indigo-400/80 shadow-md bg-indigo-50/70 dark:bg-indigo-950/50'
+                          : 'border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-xs'
+                      }`}
                     >
                       <div>
                         {/* Top Row: Title, Icon, Badges */}
                         <div className="flex items-start justify-between gap-3 mb-2">
                           <div className="flex items-center gap-2.5">
-                            <span className="text-2xl select-none">{pack.icon}</span>
+                            <span className="text-2xl select-none">{cleanPackIcon(pack.icon)}</span>
                             <div>
                               <div className="flex items-center gap-2">
                                 <h4 className="font-display font-bold text-sm text-slate-800 dark:text-slate-100">
-                                  {pack.name}
+                                  {cleanPackName(pack.name, pack.isCustom)}
                                 </h4>
                                 {pack.isCustom ? (
                                   <span className="px-1.5 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 text-[10px] font-bold">
@@ -920,6 +1294,11 @@ export const ThemeAndPackManagerModal: React.FC<ThemeAndPackManagerModalProps> =
                                 ) : (
                                   <span className="px-1.5 py-0.5 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-[10px] font-medium">
                                     Core
+                                  </span>
+                                )}
+                                {isHighlighted && (
+                                  <span className="px-1.5 py-0.5 rounded-full bg-indigo-600 text-white text-[10px] font-extrabold shadow-2xs animate-pulse">
+                                    New
                                   </span>
                                 )}
                               </div>
@@ -1031,15 +1410,17 @@ export const ThemeAndPackManagerModal: React.FC<ThemeAndPackManagerModalProps> =
                             <Copy className="w-3.5 h-3.5" />
                           </button>
 
-                          {/* Edit Pack Button */}
-                          <button
-                            type="button"
-                            onClick={() => handleStartEditPack(pack)}
-                            title="Edit pack"
-                            className="p-1.5 rounded-lg text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-700/60 transition-colors"
-                          >
-                            <Edit3 className="w-3.5 h-3.5" />
-                          </button>
+                          {/* Edit Pack Button (Custom packs only) */}
+                          {pack.isCustom && (
+                            <button
+                              type="button"
+                              onClick={() => handleStartEditPack(pack)}
+                              title="Edit custom pack"
+                              className="p-1.5 rounded-lg text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-700/60 transition-colors cursor-pointer"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
 
                           {/* Delete Pack (Custom only) */}
                           {pack.isCustom && (
@@ -1236,6 +1617,11 @@ export const ThemeAndPackManagerModal: React.FC<ThemeAndPackManagerModalProps> =
                       <h4 className="font-display font-bold text-sm text-slate-800 dark:text-slate-100">
                         Canvas Theme Backdrop Studio
                       </h4>
+                      {packTheme && (
+                        <span className="px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300 text-[10px] font-bold border border-indigo-200/60 dark:border-indigo-800/60">
+                          {packTheme}
+                        </span>
+                      )}
                     </div>
 
                     {/* Method Toggle: Image Adjuster vs SVG Builder */}

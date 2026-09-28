@@ -499,53 +499,53 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
               <div className="space-y-2.5 text-xs sm:text-sm">
                 {/* 1. Stickers & Canvas */}
-                <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-100 border border-slate-200 dark:border-slate-300 flex items-start gap-3">
-                  <span className="flex-shrink-0 w-6 h-6 rounded-full bg-red-100 text-red-700 font-bold text-xs flex items-center justify-center">
+                <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800/80 flex items-start gap-3 transition-colors">
+                  <span className="flex-shrink-0 w-6 h-6 rounded-full bg-red-100 dark:bg-red-950/80 text-red-700 dark:text-red-400 border border-red-200/60 dark:border-red-900/60 font-bold text-xs flex items-center justify-center">
                     1
                   </span>
                   <div className="flex-1">
-                    <span className="font-bold text-slate-800 dark:text-slate-900">Stickers & Canvas: </span>
-                    <span className="text-slate-600 dark:text-slate-800">
+                    <span className="font-bold text-slate-800 dark:text-slate-100">Stickers & Canvas: </span>
+                    <span className="text-slate-600 dark:text-slate-300">
                       Clears all placed stickers from your sticker canvas scenes and resets your unlocked stickers back to the initial starter set (the first two stickers).
                     </span>
                   </div>
                 </div>
 
-                {/* 2. Custom Decks */}
-                <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-100 border border-slate-200 dark:border-slate-300 flex items-start gap-3">
-                  <span className="flex-shrink-0 w-6 h-6 rounded-full bg-red-100 text-red-700 font-bold text-xs flex items-center justify-center">
+                {/* 2. Custom Decks & Packs */}
+                <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800/80 flex items-start gap-3 transition-colors">
+                  <span className="flex-shrink-0 w-6 h-6 rounded-full bg-red-100 dark:bg-red-950/80 text-red-700 dark:text-red-400 border border-red-200/60 dark:border-red-900/60 font-bold text-xs flex items-center justify-center">
                     2
                   </span>
                   <div className="flex-1">
-                    <span className="font-bold text-slate-800 dark:text-slate-900">Custom Decks: </span>
-                    <span className="text-slate-600 dark:text-slate-800">
-                      Removes any custom flashcard decks you created or imported, keeping only the pre-loaded starter decks.
+                    <span className="font-bold text-slate-800 dark:text-slate-100">Custom Decks & Themes: </span>
+                    <span className="text-slate-600 dark:text-slate-300">
+                      Removes any custom flashcard decks, imported sticker packs, and custom themes you created, keeping all original core starter decks and built-in packs.
                     </span>
                   </div>
                 </div>
 
                 {/* 3. Settings */}
-                <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-100 border border-slate-200 dark:border-slate-300 flex items-start gap-3">
-                  <span className="flex-shrink-0 w-6 h-6 rounded-full bg-red-100 text-red-700 font-bold text-xs flex items-center justify-center">
+                <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800/80 flex items-start gap-3 transition-colors">
+                  <span className="flex-shrink-0 w-6 h-6 rounded-full bg-red-100 dark:bg-red-950/80 text-red-700 dark:text-red-400 border border-red-200/60 dark:border-red-900/60 font-bold text-xs flex items-center justify-center">
                     3
                   </span>
                   <div className="flex-1">
-                    <span className="font-bold text-slate-800 dark:text-slate-900">Settings: </span>
-                    <span className="text-slate-600 dark:text-slate-800">
+                    <span className="font-bold text-slate-800 dark:text-slate-100">Settings: </span>
+                    <span className="text-slate-600 dark:text-slate-300">
                       Restores all study settings (15s timer, 2x3 matching grid, sound effects enabled, default question-first orientation, illustrated card backgrounds, and system theme) back to defaults.
                     </span>
                   </div>
                 </div>
 
-                {/* 4. Active Selection */}
-                <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-100 border border-slate-200 dark:border-slate-300 flex items-start gap-3">
-                  <span className="flex-shrink-0 w-6 h-6 rounded-full bg-red-100 text-red-700 font-bold text-xs flex items-center justify-center">
+                {/* 4. Active Selection & View */}
+                <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800/80 flex items-start gap-3 transition-colors">
+                  <span className="flex-shrink-0 w-6 h-6 rounded-full bg-red-100 dark:bg-red-950/80 text-red-700 dark:text-red-400 border border-red-200/60 dark:border-red-900/60 font-bold text-xs flex items-center justify-center">
                     4
                   </span>
                   <div className="flex-1">
-                    <span className="font-bold text-slate-800 dark:text-slate-900">Active Selection: </span>
-                    <span className="text-slate-600 dark:text-slate-800">
-                      Re-selects the first starter deck and clears saved study progress.
+                    <span className="font-bold text-slate-800 dark:text-slate-100">Active View & Selection: </span>
+                    <span className="text-slate-600 dark:text-slate-300">
+                      Returns to the first-open Card Flip study view with the first starter deck selected and round progress reset.
                     </span>
                   </div>
                 </div>

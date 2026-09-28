@@ -1,4 +1,4 @@
-import { CanvasScene, Deck, ExportedSticker, Flashcard, PlacedSticker, Sticker, StickerPack, StudySettings, VaultPackFile } from '../types';
+import { CanvasScene, Deck, DEFAULT_SETTINGS, ExportedSticker, Flashcard, PlacedSticker, Sticker, StickerPack, StudySettings, VaultPackFile } from '../types';
 
 /**
  * Robust CSV parser that handles quotes, escaped quotes, commas, tabs, and multiline values
@@ -275,16 +275,7 @@ export const storage = {
     } catch {
       // fallback
     }
-    return {
-      flipTimerDuration: 15, // Default 15s as requested by user
-      gridSize: '2x3', // Default 2x3 as requested by user
-      soundEnabled: true,
-      autoFlip: true,
-      cardOrientation: 'term-first',
-      themeMode: 'system',
-      cardBackgroundStyle: 'illustrated',
-      logoGraphicId: 'synapse',
-    };
+    return { ...DEFAULT_SETTINGS };
   },
 
   saveSettings(settings: StudySettings) {
@@ -296,15 +287,27 @@ export const storage = {
   },
 
   loadCanvasSceneId(): string {
-    return localStorage.getItem(STORAGE_CANVAS_SCENE) || 'scene-notebook';
+    try {
+      return localStorage.getItem(STORAGE_CANVAS_SCENE) || 'scene-notebook';
+    } catch {
+      return 'scene-notebook';
+    }
   },
 
   saveCanvasSceneId(sceneId: string) {
-    localStorage.setItem(STORAGE_CANVAS_SCENE, sceneId);
+    try {
+      localStorage.setItem(STORAGE_CANVAS_SCENE, sceneId);
+    } catch {
+      // Storage error catch
+    }
   },
 
   loadPastelColorId(): string | null {
-    return localStorage.getItem(STORAGE_PASTEL_COLOR);
+    try {
+      return localStorage.getItem(STORAGE_PASTEL_COLOR);
+    } catch {
+      return null;
+    }
   },
 
   savePastelColorId(colorId: string) {
@@ -316,7 +319,11 @@ export const storage = {
   },
 
   loadNeonColorId(): string | null {
-    return localStorage.getItem(STORAGE_NEON_COLOR);
+    try {
+      return localStorage.getItem(STORAGE_NEON_COLOR);
+    } catch {
+      return null;
+    }
   },
 
   saveNeonColorId(colorId: string) {

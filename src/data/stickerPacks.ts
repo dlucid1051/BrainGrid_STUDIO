@@ -1,4 +1,5 @@
 import { CanvasScene, StickerPack } from '../types';
+import { CORE_THEME_BACKDROPS } from './svgBackgroundTemplates';
 
 export const CANVAS_SCENES: CanvasScene[] = [
   {
@@ -15,6 +16,11 @@ export const CANVAS_SCENES: CanvasScene[] = [
     bgGradient: 'bg-slate-950',
     pattern: 'stars',
     packId: 'pack-space',
+    customConfig: {
+      type: 'svg',
+      presetTemplate: 'deep-cosmos',
+      svgMarkup: CORE_THEME_BACKDROPS['scene-space'].svgMarkup,
+    },
   },
   {
     id: 'scene-dino',
@@ -23,6 +29,11 @@ export const CANVAS_SCENES: CanvasScene[] = [
     bgGradient: 'bg-emerald-900',
     pattern: 'dots',
     packId: 'pack-dino',
+    customConfig: {
+      type: 'svg',
+      presetTemplate: 'prehistoric-valley',
+      svgMarkup: CORE_THEME_BACKDROPS['scene-dino'].svgMarkup,
+    },
   },
   {
     id: 'scene-arcade',
@@ -31,6 +42,11 @@ export const CANVAS_SCENES: CanvasScene[] = [
     bgGradient: 'bg-violet-950',
     pattern: 'arcade',
     packId: 'pack-math-arcade',
+    customConfig: {
+      type: 'svg',
+      presetTemplate: 'neon-arcade',
+      svgMarkup: CORE_THEME_BACKDROPS['scene-arcade'].svgMarkup,
+    },
   },
   {
     id: 'scene-ocean',
@@ -39,6 +55,11 @@ export const CANVAS_SCENES: CanvasScene[] = [
     bgGradient: 'bg-[#031d36]',
     pattern: 'ocean',
     packId: 'pack-ocean',
+    customConfig: {
+      type: 'svg',
+      presetTemplate: 'ocean-reef',
+      svgMarkup: CORE_THEME_BACKDROPS['scene-ocean'].svgMarkup,
+    },
   },
 ];
 
@@ -48,7 +69,7 @@ export const INITIAL_STICKER_PACKS: StickerPack[] = [
     name: 'Cosmic Voyagers',
     theme: 'Astronomy & Sci-Fi',
     description: 'Out-of-this-world astronauts, glowing planets, and friendly cosmic visitors.',
-    icon: 'Rocket',
+    icon: '🚀',
     isUnlocked: true,
     themeSceneId: 'scene-space',
     stickers: [
@@ -113,7 +134,7 @@ export const INITIAL_STICKER_PACKS: StickerPack[] = [
     name: 'Prehistoric Titans',
     theme: 'Dinosaurs & Fossils',
     description: 'Mighty predators, gentle herbivores, and preserved geological treasures.',
-    icon: 'Sparkles',
+    icon: '🦖',
     isUnlocked: true,
     themeSceneId: 'scene-dino',
     stickers: [
@@ -178,7 +199,7 @@ export const INITIAL_STICKER_PACKS: StickerPack[] = [
     name: 'Pixel Math Arcade',
     theme: 'Retro Gaming & Logic',
     description: 'Nostalgic 16-bit power-ups, high score trophies, and lightning computation.',
-    icon: 'Gamepad2',
+    icon: '🎮',
     isUnlocked: true,
     themeSceneId: 'scene-arcade',
     stickers: [
@@ -243,7 +264,7 @@ export const INITIAL_STICKER_PACKS: StickerPack[] = [
     name: 'Enchanted Critters',
     theme: 'Fantasy & Magic',
     description: 'Whimsical creatures, magical sparkles, and enchanted familiars.',
-    icon: 'Wand2',
+    icon: '🪄',
     isUnlocked: false, // Can be unlocked through progress or free pack download
     stickers: [
       {
@@ -307,7 +328,7 @@ export const INITIAL_STICKER_PACKS: StickerPack[] = [
     name: 'Ocean Explorers',
     theme: 'Deep Sea & Marine Life',
     description: 'Bioluminescent jellyfish, playful sea otters, coral reefs, and mysterious sunken treasures.',
-    icon: 'Waves',
+    icon: '🌊',
     isUnlocked: true,
     themeSceneId: 'scene-ocean',
     stickers: [
@@ -372,7 +393,7 @@ export const INITIAL_STICKER_PACKS: StickerPack[] = [
     name: 'Neon Cyber',
     theme: 'Cyberpunk & Synthwave',
     description: 'Glowing neon visors, retro-futuristic circuitry, high-tech drones, and AI power nodes.',
-    icon: 'Cpu',
+    icon: '⚡',
     isUnlocked: false,
     stickers: [
       {
@@ -436,7 +457,7 @@ export const INITIAL_STICKER_PACKS: StickerPack[] = [
     name: 'Botany Bloom',
     theme: 'Flora & Zen Gardens',
     description: 'Lush tropical monsteras, blooming cherry blossoms, tranquil bonsai trees, and enchanted succulents.',
-    icon: 'Flower2',
+    icon: '🌸',
     isUnlocked: false,
     stickers: [
       {

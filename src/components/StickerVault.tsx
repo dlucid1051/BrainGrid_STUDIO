@@ -47,6 +47,26 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 
+const cleanPackIcon = (icon?: string): string => {
+  if (!icon) return '🎨';
+  if (icon === 'Gamepad2' || icon === 'gamepad2') return '🎮';
+  if (icon === 'Wand2' || icon === 'wand2') return '🪄';
+  if (icon === 'Flower2' || icon === 'flower2') return '🌸';
+  if (icon === 'Rocket') return '🚀';
+  if (icon === 'Sparkles') return '✨';
+  if (icon === 'Waves') return '🌊';
+  if (icon === 'Cpu') return '⚡';
+  return icon.replace(/2$/, '');
+};
+
+const cleanPackName = (name: string, isCustom?: boolean): string => {
+  if (!name) return '';
+  if (!isCustom) {
+    return name.replace(/\s*2\b/g, '').trim();
+  }
+  return name;
+};
+
 interface ThemeThumbnailPreviewProps {
   scene: CanvasScene;
   linkedPack?: StickerPack;
@@ -77,7 +97,7 @@ const ThemeThumbnailPreview: React.FC<ThemeThumbnailPreviewProps> = ({ scene, li
 
   // 2. Custom SVG markup wallpaper
   const svgMarkup = scene.customConfig?.svgMarkup || (scene.customConfig as any)?.svg;
-  if (svgMarkup) {
+  if (svgMarkup && (scene.isCustom || !['stars', 'dots', 'arcade', 'ocean', 'notebook'].includes(scene.pattern || ''))) {
     const cleanSvg = sanitizeSvgMarkup(svgMarkup);
     return (
       <div
@@ -170,7 +190,7 @@ const ThemeThumbnailPreview: React.FC<ThemeThumbnailPreviewProps> = ({ scene, li
   // 5. Fallback: pack icon
   return (
     <div className="w-full h-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-lg select-none pointer-events-none">
-      <span>{linkedPack?.icon || '🎨'}</span>
+      <span>{cleanPackIcon(linkedPack?.icon)}</span>
     </div>
   );
 };
@@ -273,6 +293,17 @@ export const StickerVault: React.FC<StickerVaultProps> = ({
     for (let i = rawCustom.length - 1; i >= 0; i--) {
       const cs = rawCustom[i];
       if (!cs || !cs.id || seenIds.has(cs.id)) continue;
+      // Guarantee built-in ocean and core themes can never be duplicated in custom scenes
+      if (
+        cs.id === 'scene-ocean' ||
+        cs.packId === 'pack-ocean' ||
+        cs.pattern === 'ocean' ||
+        cs.id.startsWith('custom-scene-pack-ocean') ||
+        cs.id.startsWith('custom-scene-scene-ocean') ||
+        cs.id.startsWith('custom-pack-scene-ocean')
+      ) {
+        continue;
+      }
       seenIds.add(cs.id);
       customCleaned.unshift(cs);
     }
@@ -331,12 +362,14 @@ export const StickerVault: React.FC<StickerVaultProps> = ({
     }
   }, [placedStickersProp]);
 
-  // Centralized update function ensuring IndexedDB, memory cache, and App.tsx are in sync
+  // Centralized update function ensuring IndexedDB, memory cache, and App.tsx are in sync safely outside render
   const updatePlacedStickers = (updater: PlacedSticker[] | ((prev: PlacedSticker[]) => PlacedSticker[])) => {
     setPlacedStickers((prev) => {
       const next = typeof updater === 'function' ? updater(prev) : updater;
-      storage.savePlacedStickers(next);
-      onUpdatePlacedStickers?.(next);
+      queueMicrotask(() => {
+        storage.savePlacedStickers(next);
+        onUpdatePlacedStickers?.(next);
+      });
       return next;
     });
   };
@@ -436,11 +469,6 @@ export const StickerVault: React.FC<StickerVaultProps> = ({
     }
   }, [activeSceneId]);
 
-  // Save canvas changes to storage
-  useEffect(() => {
-    storage.savePlacedStickers(placedStickers);
-  }, [placedStickers]);
-
   useEffect(() => {
     storage.saveCanvasSceneId(activeSceneId);
   }, [activeSceneId]);
@@ -460,8 +488,24 @@ export const StickerVault: React.FC<StickerVaultProps> = ({
     return packs;
   }, [packs]);
 
-  // Find all stickers across packs
-  const allStickers = useMemo(() => allVaultPacks.flatMap((p) => p.stickers), [allVaultPacks]);
+  // Find all stickers across packs (guarantee unique sticker instances)
+  const allStickers = useMemo(() => {
+    const seen = new Set<string>();
+    const list: Sticker[] = [];
+    for (const p of allVaultPacks) {
+      for (const s of p.stickers) {
+        if (s && s.id) {
+          const key = `${p.id || 'pack'}-${s.id}`;
+          if (!seen.has(key)) {
+            seen.add(key);
+            list.push(s);
+          }
+        }
+      }
+    }
+    return list;
+  }, [allVaultPacks]);
+
   const getStickerById = (id: string): Sticker | undefined => allStickers.find((s) => s.id === id);
 
   const activeScene = scenes.find((s) => s.id === activeSceneId) || scenes[0];
@@ -487,9 +531,20 @@ export const StickerVault: React.FC<StickerVaultProps> = ({
     });
   }, [scenes, themeFilter, themeSearchQuery, allVaultPacks]);
 
-  // Unlocked stickers and filtered drawer stickers
+  // Unlocked stickers and filtered drawer stickers (defensively deduplicated)
   const unlockedStickers = useMemo(() => {
-    return allStickers.filter((s) => unlockedStickerIds.includes(s.id));
+    const seen = new Set<string>();
+    const list: Sticker[] = [];
+    for (const s of allStickers) {
+      if (s && s.id && unlockedStickerIds.includes(s.id)) {
+        const uniqueKey = `${s.packId || 'pack'}-${s.id}`;
+        if (!seen.has(uniqueKey)) {
+          seen.add(uniqueKey);
+          list.push(s);
+        }
+      }
+    }
+    return list;
   }, [allStickers, unlockedStickerIds]);
 
   const filteredDrawerStickers = useMemo(() => {
@@ -633,6 +688,7 @@ export const StickerVault: React.FC<StickerVaultProps> = ({
       const dataUrl = await toPng(canvasRef.current, {
         cacheBust: true,
         pixelRatio: 2, // High-res retina screenshot
+        skipFonts: true,
         filter: (node) => {
           if (node instanceof HTMLElement && node.getAttribute('data-capture-ignore') === 'true') {
             return false;
@@ -701,7 +757,8 @@ export const StickerVault: React.FC<StickerVaultProps> = ({
     const newX = Math.max(5, Math.min(95, (newPxX / rect.width) * 100));
     const newY = Math.max(5, Math.min(95, (newPxY / rect.height) * 100));
 
-    updatePlacedStickers((prev) =>
+    // Smooth real-time coordinate update without heavy disk I/O per frame
+    setPlacedStickers((prev) =>
       prev.map((s) => (s.id === draggingId ? { ...s, x: newX, y: newY } : s))
     );
   };
@@ -709,6 +766,14 @@ export const StickerVault: React.FC<StickerVaultProps> = ({
   const handlePointerUp = () => {
     if (draggingId) {
       setDraggingId(null);
+      // Persist final placed position safely on drag release
+      setPlacedStickers((current) => {
+        queueMicrotask(() => {
+          storage.savePlacedStickers(current);
+          onUpdatePlacedStickers?.(current);
+        });
+        return current;
+      });
     }
   };
 
@@ -1219,19 +1284,19 @@ export const StickerVault: React.FC<StickerVaultProps> = ({
                 }}
               />
             )}
-            {activeScene.pattern === 'stars' && (
+            {activeScene.pattern === 'stars' && !activeScene.isCustom && (
               <SpaceBackground />
             )}
-            {activeScene.pattern === 'dots' && (
+            {activeScene.pattern === 'dots' && !activeScene.isCustom && (
               <PrehistoricBackground />
             )}
-            {activeScene.pattern === 'arcade' && (
+            {activeScene.pattern === 'arcade' && !activeScene.isCustom && (
               <NeonBackground neonSet={activeNeonSet} />
             )}
-            {activeScene.pattern === 'ocean' && (
+            {activeScene.pattern === 'ocean' && !activeScene.isCustom && (
               <OceanBackground />
             )}
-            {(activeScene.customConfig || activeScene.pattern === 'custom-image' || activeScene.pattern === 'custom-svg') && (
+            {(activeScene.isCustom || activeScene.pattern === 'custom-image' || activeScene.pattern === 'custom-svg') && activeScene.customConfig && (
               <CustomCanvasBackground config={activeScene.customConfig} />
             )}
 
@@ -1575,9 +1640,9 @@ export const StickerVault: React.FC<StickerVaultProps> = ({
             ) : isDrawerExpanded ? (
               /* Option B: Expanded Multi-Row Tray Grid */
               <div className="max-h-72 overflow-y-auto p-2 grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-2 border border-slate-100 dark:border-slate-800/80 rounded-xl bg-slate-50/50 dark:bg-slate-900/50">
-                {filteredDrawerStickers.map((sticker) => (
+                {filteredDrawerStickers.map((sticker, idx) => (
                   <button
-                    key={sticker.id}
+                    key={`${sticker.packId || 'pack'}-${sticker.id}-${idx}`}
                     onClick={() => handleStampSticker(sticker.id)}
                     className="flex flex-col items-center gap-1 p-2 rounded-2xl bg-white dark:bg-slate-800 hover:bg-pink-50 dark:hover:bg-slate-750 border border-slate-200 dark:border-slate-700 hover:border-pink-300 dark:hover:border-pink-500/50 transition-all active:scale-95 group cursor-pointer shadow-2xs"
                     title={`Click to stamp ${sticker.name} (${sticker.rarity})`}
@@ -1599,9 +1664,9 @@ export const StickerVault: React.FC<StickerVaultProps> = ({
                 ref={stickerScrollerRef}
                 className="overflow-x-auto py-1 px-1 grid grid-rows-2 grid-flow-col auto-cols-max gap-2 scroll-smooth"
               >
-                {filteredDrawerStickers.map((sticker) => (
+                {filteredDrawerStickers.map((sticker, idx) => (
                   <button
-                    key={sticker.id}
+                    key={`${sticker.packId || 'pack'}-${sticker.id}-${idx}`}
                     onClick={() => handleStampSticker(sticker.id)}
                     className="flex flex-col items-center gap-0.5 p-1.5 rounded-xl bg-slate-50 dark:bg-slate-800 hover:bg-pink-50 dark:hover:bg-slate-750 border border-slate-200 dark:border-slate-700 hover:border-pink-300 dark:hover:border-pink-500/50 transition-all active:scale-95 shrink-0 group cursor-pointer w-[68px] sm:w-[72px]"
                     title={`Click to stamp ${sticker.name} (${sticker.rarity})`}
@@ -1642,7 +1707,7 @@ export const StickerVault: React.FC<StickerVaultProps> = ({
                       : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800'
                   }`}
                 >
-                  <span>{pack.name}</span>
+                  <span>{cleanPackName(pack.name, pack.isCustom)}</span>
                   <span
                     className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono ${
                       isSelected ? 'bg-white/20 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
@@ -1659,7 +1724,7 @@ export const StickerVault: React.FC<StickerVaultProps> = ({
           <div className="w-full flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-4 rounded-2xl bg-white dark:bg-slate-900 border border-indigo-100 dark:border-slate-800 shadow-xs mb-5">
             <div>
               <h3 className="font-display font-bold text-lg text-slate-800 dark:text-slate-100 flex items-center gap-2">
-                <span>{activePack.name}</span>
+                <span>{cleanPackName(activePack.name, activePack.isCustom)}</span>
                 <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300 font-semibold border border-indigo-100 dark:border-indigo-800/60">
                   {activePack.theme}
                 </span>
@@ -1684,12 +1749,12 @@ export const StickerVault: React.FC<StickerVaultProps> = ({
 
           {/* Stickers Grid */}
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3.5 w-full">
-            {activePack.stickers.map((sticker) => {
+            {activePack.stickers.map((sticker, idx) => {
               const isUnlocked = unlockedStickerIds.includes(sticker.id);
 
               return (
                 <div
-                  key={sticker.id}
+                  key={`${activePack.id}-${sticker.id}-${idx}`}
                   onClick={() => {
                     if (isUnlocked) {
                       handleStampSticker(sticker.id);
@@ -1930,24 +1995,26 @@ export const StickerVault: React.FC<StickerVaultProps> = ({
       )}
 
       {/* Theme & Sticker Pack Manager Modal */}
-      <ThemeAndPackManagerModal
-        isOpen={isPackManagerOpen}
-        onClose={() => {
-          setIsPackManagerOpen(false);
-          onClosePackStudio?.();
-        }}
-        packs={packs}
-        scenes={scenes}
-        activeSceneId={activeSceneId}
-        unlockedStickerIds={unlockedStickerIds}
-        onSelectScene={(id) => {
-          setActiveSceneId(id);
-          storage.saveCanvasSceneId(id);
-        }}
-        onSavePack={handleSavePackInternal}
-        onDeletePack={handleDeletePackInternal}
-        onToggleUnlockPack={(id) => onToggleUnlockPack && onToggleUnlockPack(id)}
-      />
+      {isPackManagerOpen && (
+        <ThemeAndPackManagerModal
+          isOpen={isPackManagerOpen}
+          onClose={() => {
+            setIsPackManagerOpen(false);
+            onClosePackStudio?.();
+          }}
+          packs={packs}
+          scenes={scenes}
+          activeSceneId={activeSceneId}
+          unlockedStickerIds={unlockedStickerIds}
+          onSelectScene={(id) => {
+            setActiveSceneId(id);
+            storage.saveCanvasSceneId(id);
+          }}
+          onSavePack={handleSavePackInternal}
+          onDeletePack={handleDeletePackInternal}
+          onToggleUnlockPack={(id) => onToggleUnlockPack && onToggleUnlockPack(id)}
+        />
+      )}
     </div>
   );
 };

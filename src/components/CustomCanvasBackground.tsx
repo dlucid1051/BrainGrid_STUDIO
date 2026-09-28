@@ -12,7 +12,20 @@ export const CustomCanvasBackground: React.FC<CustomCanvasBackgroundProps> = ({ 
   const effectiveImageUrl = config.imageUrl || config.backgroundImageUrl || (config as any).image || (config as any).url;
   const effectiveSvgMarkup = config.svgMarkup || (config as any).svg;
 
-  if (effectiveImageUrl) {
+  // 1. If explicitly SVG, render SVG
+  if (config.type === 'svg' && effectiveSvgMarkup) {
+    const cleanMarkup = sanitizeSvgMarkup(effectiveSvgMarkup);
+    return (
+      <div
+        data-canvas-bg="true"
+        className="absolute inset-0 pointer-events-none overflow-hidden select-none [&>svg]:w-full [&>svg]:h-full [&>svg]:absolute [&>svg]:inset-0"
+        dangerouslySetInnerHTML={{ __html: cleanMarkup }}
+      />
+    );
+  }
+
+  // 2. If image is available and config is not SVG
+  if (effectiveImageUrl && config.type !== 'svg') {
     const opacity = (config.opacity ?? 100) / 100;
     const dimming = (config.dimming ?? 0) / 100;
     const blurPx = config.blur ?? 0;

@@ -36,6 +36,17 @@ export interface StudySettings {
   logoGraphicId?: string; // e.g. 'synapse' | 'isometric' | 'circuit' | 'prism' | 'classic-emoji'
 }
 
+export const DEFAULT_SETTINGS: StudySettings = {
+  flipTimerDuration: 15,
+  gridSize: '2x3',
+  soundEnabled: true,
+  autoFlip: true,
+  cardOrientation: 'term-first',
+  themeMode: 'system',
+  cardBackgroundStyle: 'illustrated',
+  logoGraphicId: 'synapse',
+};
+
 export type StickerRarity = 'Common' | 'Rare' | 'Legendary' | 'Mythic';
 
 export interface CustomBackgroundConfig {
