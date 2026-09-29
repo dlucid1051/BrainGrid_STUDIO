@@ -290,19 +290,22 @@ export const ThemeAndPackManagerModal: React.FC<ThemeAndPackManagerModalProps> =
     }));
     setPackStickers(loadedStickers);
 
-    // Find linked scene if combo, and preserve its exact ID
+    // Find linked scene if combo, with strict exact ID match prioritized first
+    const exactScene =
+      (pack.themeSceneId ? scenes.find((s) => s.id === pack.themeSceneId) : undefined) ||
+      scenes.find((s) => s.packId === pack.id) ||
+      (pack.themeSceneId ? storage.loadCustomScenes().find((s) => s.id === pack.themeSceneId) : undefined) ||
+      storage.loadCustomScenes().find((s) => s.packId === pack.id);
+
     const linkedScene =
+      exactScene ||
       scenes.find(
         (s) =>
-          s.id === pack.themeSceneId ||
-          s.packId === pack.id ||
           (pack.name && s.name.toLowerCase() === pack.name.toLowerCase()) ||
           (pack.theme && s.theme && pack.theme.toLowerCase() === pack.theme.toLowerCase())
       ) ||
       storage.loadCustomScenes().find(
         (s) =>
-          s.id === pack.themeSceneId ||
-          s.packId === pack.id ||
           (pack.name && s.name.toLowerCase() === pack.name.toLowerCase()) ||
           (pack.theme && s.theme && pack.theme.toLowerCase() === pack.theme.toLowerCase())
       );
@@ -357,40 +360,25 @@ export const ThemeAndPackManagerModal: React.FC<ThemeAndPackManagerModalProps> =
     const hasValidSvg = (typeof rawSvgMarkup === 'string' && rawSvgMarkup.trim().length > 0) || !!effectiveConfig?.presetTemplate || !!coreBackdrop;
 
     // 3. Resolve backdrop editor default:
-    // If the current backdrop has an image and:
-    //   - effectiveConfig?.type === 'image' OR
-    //   - linkedScene?.pattern === 'custom-image' OR
-    //   - there is an image and no valid custom SVG markup or core backdrop
-    // -> 'image' (Image Wallpaper & Adjuster)
-    // Else if it has an SVG (core backdrop, custom-svg pattern, SVG markup, SVG preset, or vector pattern):
-    // -> 'svg' (SVG Canvas Vector Builder)
-    const isImageBackdrop =
-      (effectiveConfig?.type === 'image' && hasValidImage) ||
-      linkedScene?.pattern === 'custom-image' ||
-      (hasValidImage && !hasValidSvg && !coreBackdrop && effectiveConfig?.type !== 'svg');
+    // When valid image data exists, always default to the Image Wallpaper & Adjuster view
+    let resolvedBackdropType: 'image' | 'svg' = 'image';
 
-    const isSvgBackdrop =
+    if (hasValidImage) {
+      resolvedBackdropType = 'image';
+    } else if (
       effectiveConfig?.type === 'svg' ||
       linkedScene?.pattern === 'custom-svg' ||
-      !!coreBackdrop ||
       hasValidSvg ||
-      (linkedScene?.pattern && ['stars', 'dots', 'arcade', 'ocean', 'lines', 'waves'].includes(linkedScene.pattern));
-
-    let resolvedBackdropType: 'image' | 'svg' = 'svg';
-
-    if (isImageBackdrop && !isSvgBackdrop) {
-      resolvedBackdropType = 'image';
-    } else if (isSvgBackdrop) {
+      coreBackdrop
+    ) {
       resolvedBackdropType = 'svg';
-    } else if (hasValidImage) {
-      resolvedBackdropType = 'image';
     } else {
-      resolvedBackdropType = 'svg';
+      resolvedBackdropType = 'image';
     }
 
     setBgType(resolvedBackdropType);
 
-    if (effectiveConfig || coreBackdrop) {
+    if (effectiveConfig || coreBackdrop || hasValidImage) {
       setBgImageUrl(rawImageUrl || '');
       setBgOpacity(effectiveConfig?.opacity ?? 100);
       setBgDimming(effectiveConfig?.dimming ?? 20);
@@ -419,18 +407,21 @@ export const ThemeAndPackManagerModal: React.FC<ThemeAndPackManagerModalProps> =
   const handleDuplicatePack = (pack: StickerPack) => {
     sounds.playPop();
     const newPackId = `custom-pack-${Date.now()}`;
+    const exactScene =
+      (pack.themeSceneId ? scenes.find((s) => s.id === pack.themeSceneId) : undefined) ||
+      scenes.find((s) => s.packId === pack.id) ||
+      (pack.themeSceneId ? storage.loadCustomScenes().find((s) => s.id === pack.themeSceneId) : undefined) ||
+      storage.loadCustomScenes().find((s) => s.packId === pack.id);
+
     const linkedScene =
+      exactScene ||
       scenes.find(
         (s) =>
-          s.id === pack.themeSceneId ||
-          s.packId === pack.id ||
           (pack.name && s.name.toLowerCase() === pack.name.toLowerCase()) ||
           (pack.theme && s.theme && pack.theme.toLowerCase() === pack.theme.toLowerCase())
       ) ||
       storage.loadCustomScenes().find(
         (s) =>
-          s.id === pack.themeSceneId ||
-          s.packId === pack.id ||
           (pack.name && s.name.toLowerCase() === pack.name.toLowerCase()) ||
           (pack.theme && s.theme && pack.theme.toLowerCase() === pack.theme.toLowerCase())
       );
@@ -676,14 +667,15 @@ export const ThemeAndPackManagerModal: React.FC<ThemeAndPackManagerModalProps> =
     sounds.playFanfare();
     const isEditingBuiltIn = editingPackId ? packs.some((p) => p.id === editingPackId && !p.isCustom) : false;
     const packId = (editingPackId && !isEditingBuiltIn) ? editingPackId : `custom-pack-${Date.now()}`;
-    const linkedScene = scenes.find(
-      (s) =>
-        (editingSceneId && s.id === editingSceneId) ||
-        s.packId === packId ||
-        (packId && s.id === `custom-scene-${packId}`) ||
-        (effectivePackName && s.name.toLowerCase() === effectivePackName.toLowerCase()) ||
-        (packTheme.trim() && s.theme && s.theme.toLowerCase() === packTheme.trim().toLowerCase())
-    );
+    const linkedScene =
+      (editingSceneId ? scenes.find((s) => s.id === editingSceneId) : undefined) ||
+      scenes.find((s) => s.packId === packId) ||
+      scenes.find((s) => packId && s.id === `custom-scene-${packId}`) ||
+      scenes.find(
+        (s) =>
+          (effectivePackName && s.name.toLowerCase() === effectivePackName.toLowerCase()) ||
+          (packTheme.trim() && s.theme && s.theme.toLowerCase() === packTheme.trim().toLowerCase())
+      );
     const isEditingBuiltInScene = editingSceneId ? scenes.some((s) => s.id === editingSceneId && !s.isCustom) : false;
     const sceneId = (editingSceneId && !isEditingBuiltInScene)
       ? editingSceneId
@@ -807,8 +799,20 @@ export const ThemeAndPackManagerModal: React.FC<ThemeAndPackManagerModalProps> =
   const handleExportSinglePack = async (pack: StickerPack) => {
     sounds.playPop();
     let companionScene =
-      scenes.find((s) => s.id === pack.themeSceneId || s.packId === pack.id) ||
-      storage.loadCustomScenes().find((s) => s.id === pack.themeSceneId || s.packId === pack.id);
+      (pack.themeSceneId ? scenes.find((s) => s.id === pack.themeSceneId) : undefined) ||
+      scenes.find((s) => s.packId === pack.id) ||
+      (pack.themeSceneId ? storage.loadCustomScenes().find((s) => s.id === pack.themeSceneId) : undefined) ||
+      storage.loadCustomScenes().find((s) => s.packId === pack.id) ||
+      scenes.find(
+        (s) =>
+          (pack.name && s.name.toLowerCase() === pack.name.toLowerCase()) ||
+          (pack.theme && s.theme && pack.theme.toLowerCase() === pack.theme.toLowerCase())
+      ) ||
+      storage.loadCustomScenes().find(
+        (s) =>
+          (pack.name && s.name.toLowerCase() === pack.name.toLowerCase()) ||
+          (pack.theme && s.theme && pack.theme.toLowerCase() === pack.theme.toLowerCase())
+      );
     const coreBackdrop =
       getCoreThemeBackdrop(companionScene?.id) ||
       getCoreThemeBackdrop(pack.themeSceneId) ||
@@ -922,16 +926,19 @@ export const ThemeAndPackManagerModal: React.FC<ThemeAndPackManagerModalProps> =
     if (importPreview.themeScene) {
       let finalConfig = importPreview.themeScene.customConfig;
       if (finalConfig?.imageUrl) {
+        let imageUrl = finalConfig.imageUrl;
         try {
-          const optimized = await optimizeImageDataUrl(finalConfig.imageUrl, 1920, 1080, 0.84, 'image/jpeg');
-          finalConfig = {
-            ...finalConfig,
-            type: 'image',
-            imageUrl: optimized,
-          };
+          imageUrl = await optimizeImageDataUrl(finalConfig.imageUrl, 1920, 1080, 0.84, 'image/jpeg');
         } catch {
           // Keep existing if optimize fails
         }
+        finalConfig = {
+          ...finalConfig,
+          type: 'image',
+          imageUrl,
+          presetTemplate: undefined,
+          svgMarkup: undefined,
+        };
       }
 
       const effectivePattern: CanvasScene['pattern'] =

@@ -549,6 +549,8 @@ export function parseVaultPackJSON(jsonStr: string): VaultPackFile | null {
             ...(rawSceneObj?.customConfig || {}),
             type: 'image',
             imageUrl: detectedImageUrl,
+            presetTemplate: undefined,
+            svgMarkup: undefined,
             fitMode: rawSceneObj?.customConfig?.fitMode || 'cover',
             opacity: rawSceneObj?.customConfig?.opacity ?? 100,
             dimming: rawSceneObj?.customConfig?.dimming ?? 0,
