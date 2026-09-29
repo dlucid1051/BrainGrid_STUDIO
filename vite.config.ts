@@ -6,7 +6,8 @@ import {VitePWA} from 'vite-plugin-pwa';
 
 export default defineConfig(() => {
   return {
-    base: './',
+    //base: './',
+    base: 'BrainGrid_STUDIO',
     plugins: [
       react(),
       tailwindcss(),
